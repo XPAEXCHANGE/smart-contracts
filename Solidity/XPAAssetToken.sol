@@ -1,5 +1,9 @@
 pragma solidity ^0.4.24;
 
+contract TokenRecipient {
+    function receiveApproval(address _from, uint256 _value, address _token, bytes _extraData) external;
+}
+
 contract SafeMath {
     function safeAdd(uint x, uint y)
         internal
@@ -55,7 +59,7 @@ contract StandardToken is SafeMath {
     event Issue(address indexed _to, uint256 indexed _value);
     event Burn(address indexed _from, uint256 indexed _value);
 
-    /* constructure */
+    /* constructor */
     constructor() public payable {}
 
     /* Send coins */
@@ -112,6 +116,20 @@ contract StandardToken is SafeMath {
         allowed[msg.sender][_spender] = _value;
         emit Approval(msg.sender, _spender, _value);
         return true;
+    }
+
+    /* Approve and then communicate the approved contract in a single tx */
+    function approveAndCall(
+        address _spender,
+        uint256 _value,
+        bytes _extraData
+    )
+        public
+    returns (bool success) {    
+        if (approve(_spender, _value)) {
+            TokenRecipient(_spender).receiveApproval(msg.sender, _value, this, _extraData);
+            return true;
+        }
     }
 
     function allowance(address _owner, address _spender) constant public returns (uint256 remaining) {
