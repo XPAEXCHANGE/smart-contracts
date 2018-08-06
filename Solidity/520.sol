@@ -79,6 +79,7 @@ contract LoveToken is SafeMath {
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
     event Issue(address indexed _to, uint256 indexed _value);
+    event send(string _msg, uint256 _msglength);
 
     constructor (
         string _symbol,
@@ -173,9 +174,16 @@ contract LoveToken is SafeMath {
 
     function sendLoveMessage(string _msg)
         public  
+        returns (bool)
     {
-       issue(msg.sender, 520 ether);
-       userMsgs[msg.sender].push(_msg);
-       allMsgs.push(message(msg.sender, _msg, block.timestamp ));
+        emit send(_msg, bytes(_msg).length);
+        if(bytes(_msg).length < 600){
+            issue(msg.sender, 520 ether);
+            userMsgs[msg.sender].push(_msg);
+            allMsgs.push(message(msg.sender, _msg, block.timestamp ));
+            return true;
+        } else {
+            return false;
+        }
     }
 }
