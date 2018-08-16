@@ -137,22 +137,12 @@ contract Authorization {
 
 }
 
-contract LoveToken is SafeMath, Authorization {
+contract WOLToken is SafeMath, Authorization {
     mapping(address => uint256) balances;
     mapping(address => mapping (address => uint256)) allowed;
     uint256 public totalSupply;
     string public symbol = "WOL";
     string public name = "Word of love token";
-
-    struct message{
-        address to;
-        string name;
-        string msg;
-        string url;
-        uint256 time;
-    }
-    mapping(address => message[]) userMsgs;
-    message[] public allMsgs;
 
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
@@ -251,43 +241,9 @@ contract LoveToken is SafeMath, Authorization {
         emit send(_to, _name, bytes(_name).length, _msg, bytes(_msg).length, _url, _amount);
         if(safeAdd(bytes(_name).length, bytes(_msg).length) < 600){
             issue(_to, _amount);
-            userMsgs[_to].push(message(_to, _name, _msg, _url, block.timestamp ));
-            allMsgs.push(message( _to, _name, _msg, _url, block.timestamp ));
             return true;
         } else {
             return false;
         }
-    }
-    
-    function getUserMsg(address _user, uint256 _index)
-        public
-        view
-        returns(string, string, string, uint256)
-    {
-        return (userMsgs[_user][_index].name, userMsgs[_user][_index].msg, userMsgs[_user][_index].url, userMsgs[_user][_index].time);
-    }
-    
-    function getUserMsgLength(address _user)
-        public
-        view
-        returns(uint256)
-    {
-        return userMsgs[_user].length;
-    }
-    
-    function getAllMsg(uint256 _index)
-        public
-        view
-        returns(address, string, string, string, uint256)
-    {
-        return (allMsgs[_index].to, allMsgs[_index].name, allMsgs[_index].msg, allMsgs[_index].url, allMsgs[_index].time);
-    }
-        
-    function getAllMsgLength()
-        public
-        view
-        returns(uint256)
-    {
-        return allMsgs.length;
     }
 }
