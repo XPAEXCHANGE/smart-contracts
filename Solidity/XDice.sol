@@ -1,7 +1,7 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.25;
 
 /*
-需使用 0.4.21 compile
+需使用 0.4.25 compile
 
 [Address]
 XDice: 0xd2ae9b038f6d923efc99fc3e6f3cdb0f7e6db76c
@@ -44,12 +44,12 @@ claim(address,period): USX地址, 期數
  */
 
 interface Token {
-    function totalSupply() constant external returns (uint256 ts);
-    function balanceOf(address _owner) constant external returns (uint256 balance);
+    function totalSupply() external view returns (uint256 ts);
+    function balanceOf(address _owner) external view returns (uint256 balance);
     function transfer(address _to, uint256 _value) external returns (bool success);
     function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
     function approve(address _spender, uint256 _value) external returns (bool success);
-    function allowance(address _owner, address _spender) constant external returns (uint256 remaining);
+    function allowance(address _owner, address _spender) external view returns (uint256 remaining);
 }
 
 contract SafeMath {
@@ -58,7 +58,7 @@ contract SafeMath {
         pure
     returns(uint) {
         uint256 z = x + y;
-        require((z >= x) && (z >= y));
+        require((z >= x) && (z >= y), "safeAdd error!");
         return z;
     }
 
@@ -66,7 +66,7 @@ contract SafeMath {
         internal
         pure
     returns(uint) {
-        require(x >= y);
+        require(x >= y, "safeSub error!");
         uint256 z = x - y;
         return z;
     }
@@ -76,7 +76,7 @@ contract SafeMath {
         pure
     returns(uint) {
         uint z = x * y;
-        require((x == 0) || (z / x == y));
+        require((x == 0) || (z / x == y), "safeMul error!");
         return z;
     }
     
@@ -84,7 +84,7 @@ contract SafeMath {
         internal
         pure
     returns(uint) {
-        require(y > 0);
+        require(y > 0, "safeDiv error!");
         return x / y;
     }
 
@@ -92,7 +92,7 @@ contract SafeMath {
         internal
         view
     returns(uint) {
-        bytes32 hash = keccak256(block.timestamp, msg.sender, salt);
+        bytes32 hash = keccak256(abi.encodePacked(block.timestamp, msg.sender, salt));
         return uint(hash) % N;
     }
 }
@@ -104,7 +104,7 @@ contract Authorization {
     address public bank;
     bool public powerStatus = true;
 
-    function Authorization()
+    constructor()
         public
     {
         owner = msg.sender;
@@ -138,8 +138,8 @@ contract Authorization {
     }
 
     function transferOwnership(address newOwner_)
-        onlyOwner
         public
+        onlyOwner
     {
         owner = newOwner_;
     }
@@ -167,29 +167,62 @@ contract XDice is SafeMath, Authorization {
     mapping(address => mapping(uint256 => mapping(address => uint256))) public tickets;
     mapping(address => mapping(uint256 => mapping(address => bool))) public claimed;
     mapping(address => mapping(uint256 => uint256)) public results;
-    uint256 public maxBets = 3 ether;
+    mapping(address => uint256) public maxBets;
+    mapping(address => uint256) public singleStake;
+    uint256 defaultMaxBets = 3 ether;
+    uint256 defaultSingleStake = 1 ether;
 
-    event eBet(address token, uint256 period, address user, uint256 target);
+    event eBet(address token, uint256 period, address user, uint256 target, uint256 amount);
     event eDraw(address token, uint256 period, uint256 target);
     event eClaim(address token, uint256 period, address user, uint256 amount);
     
     event Error(uint256 code);
 
-    function XDice(
+    constructor(
     )
         public
     {
     }
 
     function setMaxBets(
-        uint256 maxBets_
+        uint256 maxBets_,
+        address token_
     )
         public
         onlyOperator
     {
-        if(maxBets_ > 1 ether) {
-            maxBets = maxBets_;
+        if(maxBets_ >= 0.01 ether) {
+            maxBets[token_] = maxBets_;
         }
+    }
+    
+    function getMaxBets(
+        address token_
+    )
+        public
+        view
+    returns(uint256) {
+        return maxBets[token_] > 0 ? maxBets[token_] : defaultMaxBets;
+    }
+
+    function setSingleStake(
+        uint256 singleStake_,
+        address token_
+    )
+        public
+    {
+        if(singleStake_ > 0) {
+            singleStake[token_] = singleStake_;
+        }
+    }
+    
+    function getSingleStake(
+        address token_
+    )
+        public
+        view
+    returns(uint256) {
+        return singleStake[token_] > 0 ? singleStake[token_] : defaultSingleStake;
     }
 
     function bet(
@@ -204,11 +237,12 @@ contract XDice is SafeMath, Authorization {
         uint256 x = target_ >= 2 && target_ <= 12 ?
             target_ :
             random(6, block.number * 15) + 1 + random(6, block.number * 25) + 1;
+        uint256 ss = getSingleStake(token_);
         if(msg.value > 0) {
             uint256 amount = msg.value;
             betting(user, address(0), amount, x);
-        } else if(Token(token_).transferFrom(user, this, 1 ether)) {
-            betting(user, token_, 1 ether, x);
+        } else if(Token(token_).transferFrom(user, this, ss)) {
+            betting(user, token_, ss, x);
         }
     }
 
@@ -222,13 +256,23 @@ contract XDice is SafeMath, Authorization {
     returns(bool) {
         uint256 t = target_;
         uint256 p = period[token_];
-        gameSets[token_][p][t] = safeAdd(gameSets[token_][p][t], amount_);
-        stakes[token_][p][user_] = safeAdd(stakes[token_][p][user_], amount_);
-        tickets[token_][p][user_] = t;
-        emit eBet(token_, p, user_, t);
+        uint256 oldt = tickets[token_][p][user_];
+        uint256 olds = stakes[token_][p][user_];
+        if(olds > 0 && oldt != t) {
+            gameSets[token_][p][oldt] = safeSub(gameSets[token_][p][oldt], olds);
+            gameSets[token_][p][t] = safeAdd(gameSets[token_][p][t], safeAdd(amount_, olds));
+            stakes[token_][p][user_] = safeAdd(stakes[token_][p][user_], amount_);
+            tickets[token_][p][user_] = t;
+        } else {
+            gameSets[token_][p][t] = safeAdd(gameSets[token_][p][t], amount_);
+            stakes[token_][p][user_] = safeAdd(stakes[token_][p][user_], amount_);
+            tickets[token_][p][user_] = t;
+        }
+
+        emit eBet(token_, p, user_, t, amount_);
         
         uint256 totalBets = getTotalStakes(token_, p, false);
-        if(totalBets >= maxBets) {
+        if(totalBets >= getMaxBets(token_)) {
             makeDraw(token_);
         }
     }
@@ -262,8 +306,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(bool) {
         return (
             stakes[token_][period_][user_] > 0 &&
@@ -276,8 +320,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(bool) {
         return (
             stakes[token_][period_][user_] > 0 &&
@@ -289,8 +333,8 @@ contract XDice is SafeMath, Authorization {
         address token_,
         address user_
     )
-        view
         public
+        view
     returns(bool) {
         return getOEResult(token_, period[token_], user_);
     }
@@ -299,8 +343,8 @@ contract XDice is SafeMath, Authorization {
         address token_,
         address user_
     )
-        view
         public
+        view
     returns(bool) {
         return getNumResult(token_, period[token_], user_);
     }
@@ -308,12 +352,12 @@ contract XDice is SafeMath, Authorization {
     function getCurrentRound(
         address token_    
     )
-        view
         public
+        view
     returns(uint256, uint256, uint256) {
         uint256 p = period[token_];
         uint256 t = getTotalStakes(token_, p, false);
-        return(p, t, maxBets);
+        return(p, t, getMaxBets(token_));
     }
 
     function getUserResult(
@@ -321,8 +365,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(bool, bool, uint256, uint256, uint256) {
         return (
             (getOEResult(token_, period_, user_) || getNumResult(token_, period_, user_)),
@@ -338,8 +382,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(bool) {
         return (
             (
@@ -355,8 +399,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         bool includeJackpot_
     )
-        view
         public
+        view
     returns(uint256) {
         uint256 totalStakes = 0;
         for(uint256 i = includeJackpot_ ? 0 : 2; i < 16; i++) {
@@ -369,8 +413,8 @@ contract XDice is SafeMath, Authorization {
         address token_,
         uint256 period_
     )
-        view
         public
+        view
     returns(uint256) {
         uint256 totalStakes = 0;
         uint256 OE = results[token_][period_] % 2;
@@ -386,10 +430,10 @@ contract XDice is SafeMath, Authorization {
         address token_,
         uint256 period_
     )
-        view
         public
+        view
     returns(uint256) {
-        return gameSets[token_][period_][ results[token_][period_] ];
+        return gameSets[token_][period_][results[token_][period_]];
     }
 
     function getUserStakes(
@@ -397,8 +441,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(uint256) {
         return stakes[token_][period_][user_];
     }
@@ -408,8 +452,8 @@ contract XDice is SafeMath, Authorization {
         uint256 period_,
         address user_
     )
-        view
         public
+        view
     returns(uint256) {
         uint256 OEReward;
         uint256 NumReward;
@@ -426,7 +470,7 @@ contract XDice is SafeMath, Authorization {
         if(getNumResult(token_, period_, user_)) {
             NumReward = safeDiv(
                 safeMul(
-                    safeDiv( safeMul(getTotalStakes(token_, period_, true), 9), 10),
+                    safeDiv(safeMul(getTotalStakes(token_, period_, true), 9), 10),
                     getUserStakes(token_, period_, user_)
                 ),
                 getNumWiningStakes(token_, period_)
