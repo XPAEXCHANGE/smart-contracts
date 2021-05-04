@@ -1,17 +1,19 @@
-pragma solidity ^0.4.21;
+// SPDX-License-Identifier: MIT
 
 /*
 Project: XPA Exchange - https://xpa.exchange
-Author : Luphia Chang - luphia.chang@isuncloud.com
+Author : Luphia Chang - luphia.chang@tideisun.com
  */
+ 
+pragma solidity ^0.6.12;
 
 interface Token {
-    function totalSupply() constant external returns (uint256 ts);
-    function balanceOf(address _owner) constant external returns (uint256 balance);
+    function totalSupply() view external returns (uint256 ts);
+    function balanceOf(address _owner) view external returns (uint256 balance);
     function transfer(address _to, uint256 _value) external returns (bool success);
     function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
     function approve(address _spender, uint256 _value) external returns (bool success);
-    function allowance(address _owner, address _spender) constant external returns (uint256 remaining);
+    function allowance(address _owner, address _spender) view external returns (uint256 remaining);
 }
 
 contract SafeMath {
@@ -54,7 +56,7 @@ contract SafeMath {
         internal
         view
     returns(uint) {
-        bytes32 hash = keccak256(block.number, msg.sender, salt);
+        bytes32 hash = keccak256(abi.encodePacked(block.number, msg.sender, salt));
         return uint(hash) % N;
     }
 }
@@ -66,7 +68,7 @@ contract Authorization {
     address public bank;
     bool public powerStatus = true;
 
-    function Authorization()
+    constructor()
         public
     {
         owner = msg.sender;
@@ -181,7 +183,7 @@ contract Baliv is SafeMath, Authorization {
     uint256 public autoMatch = 10;
     uint256 public maxAmount = 10 ** 27;
     uint256 public maxPrice = 10 ** 36;
-    address public XPAToken = 0x0090528aeb3a2b736b780fd1b6c478bb7e1d643170;
+    address public XPAToken = address(0x0090528aeb3a2b736b780fd1b6c478bb7e1d643170);
 
     /* exchange data */
     mapping(address => mapping(address => mapping(uint256 => mapping(address => linkedBook)))) public orderBooks;
@@ -202,11 +204,11 @@ contract Baliv is SafeMath, Authorization {
     event Error(uint256 code);
 
     /* constructor */
-    function Baliv(
+    constructor(
         address XPAAddr
     ) public {
         XPAToken = XPAAddr;
-        minAmount[0] = 10 ** 16;
+        minAmount[address(0)] = 10 ** 16;
     }
 
     /* Operator Function
@@ -288,11 +290,11 @@ contract Baliv is SafeMath, Authorization {
     returns(uint256) {
         return minAmount[token_] > 0
             ? minAmount[token_]
-            : minAmount[0];
+            : minAmount[address(0)];
     }
     
     function setFeerate(
-        uint256[3] feerate_
+        uint256[3] memory feerate_
     )
         onlyOperator
         public
@@ -302,12 +304,17 @@ contract Baliv is SafeMath, Authorization {
     }
 
     /* External function */
-    // fallback
-    function ()
-        public
+    fallback()
+        external
         payable
     {
-        deposit(0, 0);
+        deposit(address(0), address(0));
+    }
+
+    receive()
+        external
+        payable
+    {
     }
 
     // deposit all allowance
@@ -499,7 +506,7 @@ contract Baliv is SafeMath, Authorization {
     {
         // Don't worry, this takes maker feerate
         uint256 takerPrice = getNextOrderPrice(fromToken_, toToken_, 0);
-        address taker = getNextOrderUser(fromToken_, toToken_, takerPrice, 0);
+        address taker = getNextOrderUser(fromToken_, toToken_, takerPrice, address(0));
         uint256 takerAmount = getOrderAmount(fromToken_, toToken_, takerPrice, taker);
         /*
             fillAmount[0] = TakerFill
@@ -563,10 +570,10 @@ contract Baliv is SafeMath, Authorization {
 
                 updateBalance(user, address(0), msg.value, true);
             }
-            amount = Token(token_).allowance(msg.sender, this);
+            amount = Token(token_).allowance(msg.sender, address(this));
             if(
                 amount > 0 &&
-                Token(token_).transferFrom(msg.sender, this, amount)
+                Token(token_).transferFrom(msg.sender, address(this), amount)
             ) {
                 // log event: Deposit
                 emit eDeposit(user, token_, amount);
@@ -647,7 +654,7 @@ contract Baliv is SafeMath, Authorization {
         uint256 amount_
     )
         internal
-    returns(uint256[2], uint256[2]) {
+    returns(uint256[2] memory, uint256[2] memory) {
         /*
             totalMatchAmount[0]: Taker total match amount
             totalMatchAmount[1]: Maker total match amount
@@ -713,10 +720,11 @@ contract Baliv is SafeMath, Authorization {
         uint256 remaining_
     )
         internal
-    returns(uint256[3]) {
+    returns(uint256[3] memory) {
+        uint256[3] memory totalFill;
         if(checkPricePair(price_, bestPrice_)) {
             address prevMaker = address(0);
-            address maker = getNextOrderUser(toToken_, fromToken_, bestPrice_, 0);
+            address maker = getNextOrderUser(toToken_, fromToken_, bestPrice_, address(0));
             uint256 remaining = remaining_;
 
             /*
@@ -724,7 +732,6 @@ contract Baliv is SafeMath, Authorization {
                 totalFill[1]: Total Maker fillAmount
                 totalFill[2]: Total Maker fee
              */
-            uint256[3] memory totalFill;
             for(uint256 i = 0; i < autoMatch && remaining > 0 && maker != address(0); i++) {
                 uint256[3] memory fill;
                 fill = makeTradeDetail(fromToken_, toToken_, price_, bestPrice_, maker, remaining);
@@ -755,7 +762,7 @@ contract Baliv is SafeMath, Authorization {
         uint256 remaining_
     )
         internal
-    returns(uint256[3]) {
+    returns(uint256[3] memory) {
         /*
             fillAmount[0]: Taker fillAmount
             fillAmount[1]: Maker fillAmount
@@ -841,7 +848,7 @@ contract Baliv is SafeMath, Authorization {
                     // log event: Withdraw
                     emit eWithdraw(user_, token_, amount_);
     
-                    user_.transfer(amount_);
+                    payable(user_).transfer(amount_);
                     return true;
                 }
             } else if(Token(token_).transfer(user_, amount_)) {
@@ -910,9 +917,9 @@ contract Baliv is SafeMath, Authorization {
     )
         internal 
     {
-        address firstUser = getNextOrderUser(fromToken_, toToken_, price_, 0);
+        address firstUser = getNextOrderUser(fromToken_, toToken_, price_, address(0));
         if(user_ != address(0) && user_ != firstUser) {
-            updateNextOrderUser(fromToken_, toToken_, price_, 0, user_);
+            updateNextOrderUser(fromToken_, toToken_, price_, address(0), user_);
             if(firstUser != address(0)) {
                 updateNextOrderUser(fromToken_, toToken_, price_, user_, firstUser);
             }
