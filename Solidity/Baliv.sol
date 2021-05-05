@@ -381,6 +381,7 @@ contract Baliv is SafeMath, Authorization {
        amount_ = 0x4563918244f40000 (5 ether)
        => 期望以 5 ether fromToken 換取 5 ether toToken
        
+       參考規則 EX2:
        price_ = 0x16345785d8a0000 = 0.1
        amount_ = 0x4563918244f40000 (5 ether)
        => 期望以 5 ether fromToken 換取 0.5 ether toToken
