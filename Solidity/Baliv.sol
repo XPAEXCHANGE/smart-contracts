@@ -376,6 +376,15 @@ contract Baliv is SafeMath, Authorization {
         }
     }
 
+    /* 參考規則 EX1:
+       price_ = 0xde0b6b3a7640000 = 1
+       amount_ = 0x4563918244f40000 (5 ether)
+       => 期望以 5 ether fromToken 換取 5 ether toToken
+       
+       price_ = 0x16345785d8a0000 = 0.1
+       amount_ = 0x4563918244f40000 (5 ether)
+       => 期望以 5 ether fromToken 換取 0.5 ether toToken
+     */
     function userTakeOrder(
         address fromToken_,
         address toToken_,
