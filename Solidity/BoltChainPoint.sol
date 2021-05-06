@@ -170,9 +170,13 @@ contract BoltChainPoint is StandardToken {
         }
     }
 
-    function apply(
-        string service
+    function requestService(
+        string memory service
     )
+        public
+    returns(bool success) {
+        
+    }
 
     function burn(
         uint256 amount_
