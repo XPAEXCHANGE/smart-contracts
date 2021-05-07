@@ -129,6 +129,8 @@ contract BoltChainPoint is StandardToken {
     string public name = "BoltChain Point";
     string public symbol = "BCP";
 
+    event ApplyService(bytes32 indexed service, address indexed user, uint256 indexed price);
+
     // constructor
     constructor(
     )
@@ -171,11 +173,13 @@ contract BoltChainPoint is StandardToken {
     }
 
     function requestService(
-        string memory service
+        bytes32 service
     )
-        public
+        external
+        payable
     returns(bool success) {
-        
+        emit ApplyService(service, msg.sender, msg.value);
+        return true;
     }
 
     function burn(
