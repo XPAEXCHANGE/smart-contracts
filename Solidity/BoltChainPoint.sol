@@ -124,11 +124,15 @@ contract StandardToken is SafeMath {
 
 contract BoltChainPoint is StandardToken {
     // metadata
+    mapping(bytes32 => uint256) servicePrice;
+    mapping(bytes32 => bool) serviceStatus;
     address public owner;
     string public version = "1.0";
     string public name = "BoltChain Point";
     string public symbol = "BCP";
 
+    event EnableService(bytes32 indexed service, uint256 indexed price);
+    event DisableService(bytes32 indexed service);
     event ApplyService(bytes32 indexed service, address indexed user, uint256 indexed price);
 
     // constructor
@@ -172,14 +176,65 @@ contract BoltChainPoint is StandardToken {
         }
     }
 
+    function enableService(
+        bytes32 service,
+        uint256 price
+    )
+        external
+    returns(bool success) {
+        require(service[0] != 0 && price > 0);
+        serviceStatus[service] = true;
+        servicePrice[service] = price;
+        emit EnableService(service, price);
+        return true;
+    }
+    
+    function disableService(
+        bytes32 service
+    )
+        external
+    returns(bool success) {
+        require(service[0] != 0);
+        serviceStatus[service] = false;
+        emit DisableService(service);
+        return true;
+    }
+
     function requestService(
         bytes32 service
     )
         external
         payable
     returns(bool success) {
+        uint256 price = servicePrice[service];
+        address customer = msg.sender;
+        uint256 change = safeSub(msg.value, price);
+
+        require(serviceStatus[service] && msg.value >= price);
+
+        // 回饋與找零
+        mint(customer, price);
+        if(change > 0) {
+            payable(customer).transfer(change);
+        }
         emit ApplyService(service, msg.sender, msg.value);
         return true;
+    }
+
+    function mint(
+        address user_,
+        uint256 amount_
+    )
+        internal
+        onlyOwner
+    returns(bool success) {
+        if(amount_ > 0 && user_ != address(0)) {
+            totalSupply = safeAdd(totalSupply, amount_);
+            balances[user_] = safeAdd(balances[user_], amount_);
+            emit Issue(address(0), amount_);
+            emit Transfer(address(0), user_, amount_);
+            return true;
+        }
     }
 
     function burn(
