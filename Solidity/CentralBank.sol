@@ -289,27 +289,20 @@ contract CentralBank is SafeMath {
     returns(bool _success) {
         if(!UserExists[user_]) {
             UserExists[user_] = true;
-            for(uint i = 0; i < TokenCount; i++) {
-                address tokenAddress = Tokens[i];
-                CustomToken token = CustomToken(tokenAddress);
-                uint256 price = Prices[tokenAddress];
-                uint256 decimals = token.getDecimals();
-                uint256 amount = safeDiv(safeMul(value_, 10 ** decimals), price);
-                token.mint(user_, amount);
-            }
+            airDrop(user_, value_);
             if(address(this).balance > 1 ether) {
                 payable(user_).transfer(1 ether);
             }
         }
         return true;
     }
+
     function airDrop(
         address user_,
         uint256 value_
     )
         public
     returns(bool _success) {
-        UserExists[user_] = true;
         for(uint i = 0; i < TokenCount; i++) {
             address tokenAddress = Tokens[i];
             CustomToken token = CustomToken(tokenAddress);
@@ -317,9 +310,6 @@ contract CentralBank is SafeMath {
             uint256 decimals = token.getDecimals();
             uint256 amount = safeDiv(safeMul(value_, 10 ** decimals), price);
             token.mint(user_, amount);
-        }
-        if(address(this).balance > 1 ether) {
-            payable(user_).transfer(1 ether);
         }
         return true;
     }
